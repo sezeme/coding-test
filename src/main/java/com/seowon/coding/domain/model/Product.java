@@ -12,6 +12,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 @Entity
 @Data
@@ -53,5 +54,24 @@ public class Product {
             throw new IllegalArgumentException("Quantity must be positive");
         }
         stockQuantity += quantity;
+    }
+
+    static RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+    static int SCALE = 2;
+    static BigDecimal VAT = BigDecimal.valueOf(1.1);
+
+    public void setPrice(BigDecimal price) {
+        this.price = price.setScale(SCALE, ROUNDING_MODE);
+    }
+
+    public void changePrice(BigDecimal percentage, boolean includeTax) {
+        BigDecimal base = this.getPrice() == null ? BigDecimal.ZERO : this.getPrice();
+        BigDecimal dividedPercentage = percentage.divide(BigDecimal.valueOf(100), ROUNDING_MODE);
+        BigDecimal changed = base.add(base.multiply(dividedPercentage)); // 부동소수점 오류 가능
+        if (includeTax) {
+            changed = changed.multiply(VAT); // 하드코딩 VAT 10%, 지역/카테고리별 규칙 미반영
+        }
+        // 임의 반올림: 일관되지 않은 스케일/반올림 모드
+        setPrice(changed);
     }
 }
