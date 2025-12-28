@@ -1,9 +1,12 @@
 package com.seowon.coding.domain.model;
 
 
+import com.seowon.coding.util.ListFun;
 import lombok.Builder;
+import lombok.Getter;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 class PermissionChecker {
@@ -20,43 +23,44 @@ class PermissionChecker {
             List<UserGroup> groups,
             List<Policy> policies
     ) {
-        // 1. 해당 권한 및 정책을 가지고 있는 policy 필터링
-        // * 해당 policy를 가지고 있는 group 찾기
-        List<Policy> foundPolicies = new ArrayList<>();
+        // 1. target user 찾기
+        HashMap<String, User> userMap = ListFun.toHashMap(users, User::getId);
+        User foundUser = userMap.get(userId);
+        if (foundUser == null) return false;
+
+        // 2. 해당 권한 및 정책을 가지고 있는 policy 필터링
+        List<String> foundPolicyIds = new ArrayList<>();
         for (Policy policy : policies) {
             for (Statement statement : policy.statements) {
                 if (statement.actions.contains(targetAction) &&
                         statement.resources.contains(targetResource)) {
-                    foundPolicies.add(policy);
+                    foundPolicyIds.add(policy.id);
+                    break;
                 }
             }
         }
-        if (foundPolicies.isEmpty()) return false;
+        if (foundPolicyIds.isEmpty()) return false;
 
-        List<UserGroup> foundGroup = new ArrayList<>();
-        for (Policy policy : foundPolicies) {
-            for (UserGroup group : groups) {
-                if (group.policyIds.contains(policy.id)) foundGroup.add(group);
+        // 3. groupId -> UserGroup 맵
+        HashMap<String, UserGroup> groupMap =
+                ListFun.toHashMap(groups, UserGroup::getId);
+
+        // 4. 사용자가 속한 group 중 하나라도 정책을 만족하면 true
+        for (String groupId : foundUser.groupIds) {
+            UserGroup group = groupMap.get(groupId);
+            if (group == null) continue;
+
+            for (String policyId : group.policyIds) {
+                if (foundPolicyIds.contains(policyId)) return true;
             }
         }
-        if (foundGroup.isEmpty()) return false;
 
-        // 2. target user이 있는지 찾기
-        User foundUser = null;
-        for (User user : users) {
-            if (user.id.equals(userId)) foundUser = user;
-        }
-        if (foundUser == null) return false;
-
-        // 3. user가 해당 group에 소속되어있는지 확인
-        for (UserGroup group : foundGroup) {
-            if (foundUser.groupIds.contains(group.id)) return true;
-        }
         return false;
     }
 }
 
 class User {
+    @Getter
     String id;
     List<String> groupIds;
 
@@ -67,6 +71,7 @@ class User {
 }
 
 class UserGroup {
+    @Getter
     String id;
     List<String> policyIds;
 
@@ -77,6 +82,7 @@ class UserGroup {
 }
 
 class Policy {
+    @Getter
     String id;
     List<Statement> statements;
 
