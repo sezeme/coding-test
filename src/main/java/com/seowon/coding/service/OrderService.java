@@ -142,6 +142,9 @@ public class OrderService {
      * - 상식적인 수준에서 요구사항(기획)을 가정하며 최대한 상세히 작성하세요.
      */
     @Transactional
+    /* 너무 넓은 트랜젝션 범위
+    * DB 커넥션 장시간 점유, 장애 시 롤백 비용 큼
+    * -> 단일 주문 단위 메서드 분리 후 트랜잭션 */
     public void bulkShipOrdersParent(String jobId, List<Long> orderIds) {
         ProcessingStatus ps = processingStatusRepository.findByJobId(jobId)
                 .orElseGet(() -> processingStatusRepository.save(ProcessingStatus.builder().jobId(jobId).build()));
@@ -154,10 +157,17 @@ public class OrderService {
                 // 오래 걸리는 작업 이라는 가정 시뮬레이션 (예: 외부 시스템 연동, 대용량 계산 등)
                 orderRepository.findById(orderId).ifPresent(o -> o.setStatus(Order.OrderStatus.PROCESSING));
                 // 중간 진행률 저장
+                /* 트랜잭션 분리 되고 있지 않음
+                * this.xxx <- 객체 내부에서 호출되어, Spring 프록시 호출되지 않고있으므로 해당 서비스 함수는 다른 클래스로 분리
+                * */
                 this.updateProgressRequiresNew(jobId, ++processed, orderIds.size());
             } catch (Exception e) {
+                /* 실패 상태 변경 해야 함 */
+                /* 실패 원인 로그 남겨야 함 */
             }
         }
+        /* 같은 상태 엔티티를 여러 컨텍스트에서 만지고 있음
+        * 진행 상태 엔티티는 한 트랜잭션 전략에서만 수정 -> 서비스 클래스 분리 후 Propagation.REQUIRES_NEW 로 관리 */
         ps = processingStatusRepository.findByJobId(jobId).orElse(ps);
         ps.markCompleted();
         processingStatusRepository.save(ps);
